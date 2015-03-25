@@ -1,0 +1,170 @@
+---
+title: "Capstone Exploration 1"
+author: "Kevin Thompson"
+date: "March 24, 2015"
+output: html_document
+---
+
+```{r loading, echo=FALSE, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tm)
+library(RWeka)
+library(DT)
+library(pbapply)
+library(scales)
+
+set.seed(1337)
+
+tokenizeFiles <- function(x, sampleRate=0.01, verbose=TRUE, minTokens=1, maxTokens=2, firstWordOnly=FALSE) {
+  kevTokenizer <- function(x) NGramTokenizer(x, Weka_control(min=minTokens, max=maxTokens))
+  pboptions(type="txt")
+  if(!verbose) { pboptions(type="none")}
+  tokenVector = c()
+  for(eachFile in x) {
+    if(verbose) { print(paste("Processing",eachFile)) }
+    allLines <- readLines(eachFile, skipNul = TRUE, encoding = "utf-8")
+    list_of_tokens <- pblapply(sample(allLines, round(length(allLines)*sampleRate)), function(x) {
+      if(firstWordOnly) {
+        corpus <- Corpus(VectorSource(unlist(strsplit(x, " "))[1]))
+      } else {corpus <- Corpus(VectorSource(x))}
+      
+      corpus <- tm_map(corpus, content_transformer(tolower))
+      corpus <- tm_map(corpus, removePunctuation)
+      corpus <- tm_map(corpus, removeNumbers)
+      kevTokenizer(corpus$content[[1]])
+    })
+    tokenVector <- c(tokenVector, unlist(list_of_tokens))
+  }
+  data.frame(tokens = tokenVector, stringsAsFactors = FALSE) %>% count(tokens)
+}
+
+titleCase <- function(inVector) {
+  unlist(lapply(inVector, function(x) {
+    temp <- unlist(strsplit(x, ""))
+    temp[1] <- toupper(temp[1])
+    paste(temp, collapse="")
+  }))
+}
+
+```
+
+```{r summaryStats, echo=FALSE, message=FALSE, warning=FALSE}
+if(!file.exists("saveData/summaryStats.Rda")) {
+  summaryStats <- data.frame(names=c("en_US.blogs.txt","en_US.news.txt","en_US.twitter.txt"),
+                           descr=c("English blog posts","English news reports","English twitter posts"))
+
+  summaryStats$linecount <- unlist(lapply(summaryStats$names, function(x) {
+    filetoopen <- paste0("final/en_US/", x)
+    temp <- unlist(strsplit(system(paste("wc", filetoopen, collapse=" "), intern=TRUE), " "))
+    temp <- temp[temp != ""]
+    temp[1]
+    }))
+  summaryStats$wordcount <- unlist(lapply(summaryStats$names, function(x) {
+    filetoopen <- paste0("final/en_US/", x)
+    temp <- unlist(strsplit(system(paste("wc", filetoopen, collapse=" "), intern=TRUE), " "))
+    temp <- temp[temp != ""]
+    temp[2]
+    }))
+  summaryStats$bytecount <- unlist(lapply(summaryStats$names, function(x) {
+    filetoopen <- paste0("final/en_US/", x)
+    temp <- unlist(strsplit(system(paste("wc", filetoopen, collapse=" "), intern=TRUE), " "))
+    temp <- temp[temp != ""]
+    temp[3]
+    }))
+  save(summaryStats, file="saveData/summaryStats.Rda")
+} else { load("saveData/summaryStats.Rda")}
+
+```
+
+The Coursera / Johns Hopkins University Data Science Specialization capstone project is an analysis of a several large samples of english text
+with the goal of developing a predictive text application in Shiny. The following is a report on the initial data exploration and plan for
+developing the predictor.
+
+# Exploration
+```{r tableOfFileStats, echo=FALSE, warning=FALSE, message=FALSE}
+datatable(summaryStats, 
+          colnames = c("Name", "Description", "Line Count", "Word Count", "Byte Count"),
+          rownames = FALSE,
+          caption = "Table 1. Summary of source files",
+          options = list(dom = 't',
+                         columnDefs = list(list(className = 'dt-center', targets=c(0,1,2,3,4)))))
+```
+
+### Most common single words
+Having a list of the most common single words will be very useful for those instances where the predictor is not able to make a prediction
+based on the words that came before. If the predictor is encountering a completely new phrase it can fall back to using the most frequently seen words. Since these are the most common words, I will use a sample of one percent of the lines from each of the source files.
+
+```{r getSingleTokens, echo=FALSE, warning=FALSE, message=FALSE}
+if(!file.exists("saveData/singleTokenSample.Rda")) {
+  deezTokens <- tokenizeFiles(c("final/en_US/en_US.blogs.txt", "final/en_US/en_US.news.txt", "final/en_US/en_US.twitter.txt"), 
+                            sampleRate = 0.01, maxTokens = 1, verbose = FALSE)
+  deezTokens <- deezTokens %>% 
+    mutate(samplesize=sum(n), freq=n/samplesize) %>% 
+    arrange(desc(n)) %>% 
+    filter(freq >= 0.001)
+  
+  save(deezTokens, file="saveData/singleTokenSample.Rda")
+} else { load("saveData/singleTokenSample.Rda")}
+
+deezTokens %>% 
+  head(5) %>% 
+  select(tokens, freq) %>%
+  mutate(freq=percent(freq)) %>% 
+  datatable(colnames = c("Word", "Frequency"),
+          rownames = FALSE,
+          caption = "Table 2. Single word frequency",
+          options = list(dom = 't',
+                         columnDefs = list(list(className = 'dt-center', targets=c(0,1)))))
+```
+The five most frequently encountered words in the dataset account for `r percent(sum(deezTokens %>% head(5) %>% select(freq)))` of the data set.
+```{r plotTokens, echo=FALSE, warning=FALSE, message=FALSE}
+deezTokens %>% head(25) %>% ggplot(aes(x=factor(tokens, levels=rev((deezTokens %>% head(25))$tokens)), y=freq)) +
+  geom_bar(stat="identity") +
+  coord_flip() +
+  scale_y_continuous(labels = percent) +
+  labs(x="Token", y="Frequency", title=paste0("Frequency of top 25 words in sample. n=", (deezTokens %>% head(1))$samplesize)) + 
+  theme_bw()
+```
+
+There is significant leveling off after the top ten or 15 most frequently seen terms. For the predictor we will use the five most frequently seen terms.
+
+### Most common start words
+These are the words that start most sentences. Useful for when the predictor is asked to predict the first word of a sentence. Rather than try
+to split every sample on the occurence of periods (which can be complicated by abbreviations) I will assume that the first word of every line
+in the source files is the start of a new sentence and use that as a sample to derive the most common starting words. Once again a sample of one
+percent was used to get the frequency of start words. Here are the five most frequently seen words to start a sentence.
+
+```{r plotFirstTokens, echo=FALSE, warning=FALSE, message=FALSE}
+if(!file.exists("saveData/firstTokenSample.Rda")) {
+  firstTokens <- tokenizeFiles(c("final/en_US/en_US.blogs.txt", "final/en_US/en_US.news.txt", "final/en_US/en_US.twitter.txt"), 
+                              sampleRate = 0.01, maxTokens = 1, firstWordOnly = TRUE, verbose = FALSE) 
+  firstTokens <- firstTokens %>% 
+    mutate(samplesize=sum(n), freq=n/samplesize) %>%
+    arrange(desc(n)) %>%
+    filter(freq >= 0.001)
+  save(firstTokens, file="saveData/firstTokenSample.Rda")
+} else { load("saveData/firstTokenSample.Rda")}
+
+firstTokens$tokens <- titleCase(firstTokens$tokens)
+firstTokens %>%
+  head(5) %>%
+  select(tokens, freq) %>%
+  ggplot(aes(x=factor(tokens, levels=rev((firstTokens %>% head(5))$tokens)), y=freq)) +
+    geom_bar(stat="identity") +
+    coord_flip() +
+    scale_y_continuous(labels = percent) +
+    labs(x="Token", y="Frequency", title=paste0("Frequency of top 5 start words in sample. n=", (firstTokens %>% head(1))$samplesize)) +
+    theme_bw()
+```
+
+The five most frequently encountered start words in the dataset are the start word for `r percent(sum(firstTokens %>% head(5) %>% select(freq)))` of the sentences in the data.
+
+# Common Natural Language Processing Tricks
+Often times when following tutorials on Natural Language Processing the topic of **stop words** comes up. Stop words are those little english language terms that connect one word to another but really do not provide much meaning to the sentence. Words like "the", "an", "or", "if", etc. Many of the tutorials out there suggest removing stop words from your corpus before doing anything with it. The practice of removing stop words makes sense for many applications of natural language processing such as creating a word cloud or classifying an article. However, for the text prediction application I am going to leave in the stop words. 
+
+The purpose of a text prediction application is to assist the user with typing their message, stop words and all, in the fastest way possible. If the next word a user needs to type is a stop word 
+then a set of suggestions which are not stop words will be useless to that user.
+
+# Measuring success
+The best way to measure the success of the model is to test it against some data which has been held out from analysis. After a functioning model is built, the model will be tested by selecting random n-grams from the data set and then counting how often the model returns the correct word among the suggestions.
