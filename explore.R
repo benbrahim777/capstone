@@ -3,7 +3,7 @@ library(RWeka)
 library(pbapply)
 library(dplyr)
 
-kevTokenizer <- function(x) NGramTokenizer(x, Weka_control(min=2, max=4))
+kevTokenizer <- function(x) NGramTokenizer(x, Weka_control(min=2, max=5))
 
 tokenizeFiles <- function(x, sampleRate=0.01, verbose=TRUE) {
   pboptions(type="txt")
@@ -40,8 +40,8 @@ predictor <- function(prefix, df) {
 }
 
 deezTokens <- tokenizeFiles(c("final/en_US/en_US.blogs.txt", "final/en_US/en_US.news.txt", "final/en_US/en_US.twitter.txt"), 
-                            sampleRate = 0.1)
+                            sampleRate = 0.2)
 deezTokens$suffix <- unlist(lapply(deezTokens$tokens, splitter))
 deezTokens$prefix <- unlist(lapply(deezTokens$tokens, splitter, prefix=TRUE))
 deezTokens$tokens <- NULL
-deezTokens <- deezTokens %>% group_by(prefix) %>% top_n(5, n) %>% filter(n>1)
+deezTokens <- deezTokens %>% group_by(prefix) %>% top_n(1, n) %>% filter(n>=10)

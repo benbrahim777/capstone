@@ -1,0 +1,20 @@
+library(data.table)
+library(tm)
+library(RWeka)
+library(pbapply)
+library(dplyr)
+
+kevTokenizer <- function(x) NGramTokenizer(x, Weka_control(min=4, max=4))
+
+corpus <- Corpus(VectorSource(readLines("final/en_US/en_US.blogs.txt")))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+
+ngrams <- unlist(pblapply(corpus$content, kevTokenizer))
+ngrams <- lapply(unlist(ngrams), function(x) {strsplit(x, " ")})
+ngrams <- rbindlist(lapply(ngrams, function(ngram) as.list(unlist(ngram))))
+names(ngrams) <- c("p1","p2","p3","o1")
+ngrams <- ngrams %>% count(p1,p2,p3,o1)
+ngrams <- ngrams %>% filter(n >= 10)
+setkey(ngrams, p1,p2,p3)
