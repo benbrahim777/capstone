@@ -5,7 +5,7 @@ library(RWeka)
 load("lookup.Rda")
 kevTokenizer <- function(x) NGramTokenizer(x, Weka_control(min=4, max=4))
 
-predict <- function(inString) {
+predict <- function(inString, lookup) {
   incorp <- Corpus(VectorSource(inString))
   incorp <- tm_map(incorp, content_transformer(tolower))
   incorp <- tm_map(incorp, removePunctuation)

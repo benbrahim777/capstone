@@ -4,16 +4,19 @@ library(RWeka)
 library(pbapply)
 library(dplyr)
 
-kevTokenizer <- function(x) NGramTokenizer(x, Weka_control(min=4, max=4))
+unlist(lapply(1:4, function(x) {
+  paste0("p",x)
+}))
 
-kevSplitter <- function(x) {
+kevSplitter <- function(x, ngramsize=4) {
   tokens <- strsplit(x, " ")
-  if(length(tokens[[1]]) != 4) { warning(paste(x, "does not split into 4", collapse = " "))}
-  tokens[[1]] <- c(tokens[[1]], "nop","nop","nop","nop")
-  return(tokens[[1]][1:4])
+  if(length(tokens[[1]]) != ngramsize) { warning(paste(x, "does not split into", ngramsize, collapse = " "))}
+  tokens[[1]] <- c(tokens[[1]], rep("nop",ngramsize))
+  return(tokens[[1]][1:ngramsize])
 }
 
-buildDB <- function(inDirectory, sampleRate=0.01, verbose=TRUE, threshold=0) {
+buildDB <- function(inDirectory, sampleRate=0.01, verbose=TRUE, threshold=0, ngramsize=4) {
+  kevTokenizer <- function(x) NGramTokenizer(x, Weka_control(min=ngramsize, max=ngramsize))
   pboptions(type="txt")
   if(!verbose) { pboptions(type="none")}
   if(verbose) { print(paste("reading source files from", inDirectory, collapse = " "))}
@@ -31,22 +34,39 @@ buildDB <- function(inDirectory, sampleRate=0.01, verbose=TRUE, threshold=0) {
   ngrams <- unlist(pblapply(corpus$content, kevTokenizer))
   
   if(verbose) { print("splitting the ngrams by whitespace")}
-  ngrams <- pblapply(unlist(ngrams), kevSplitter)
+  ngrams <- pblapply(unlist(ngrams), kevSplitter, ngramsize)
   
   if(verbose) { print("now building data.table")}
   ngrams <- rbindlist(pblapply(ngrams, function(ngram) as.list(unlist(ngram))))
-  names(ngrams) <- c("p1","p2","p3","o1")
-  ngrams <- ngrams %>% count(p1,p2,p3,o1)
+  newnames <- unlist(lapply(1:(ngramsize-1), function(x) { paste0("p",x)}))
+  names(ngrams) <- c(newnames, "o1")
+  ngrams <- ngrams %>% count_(c(newnames, "o1"))
   ngrams <- ngrams %>% filter(n >= threshold)
-  setkey(ngrams, p1,p2,p3)
+  setkeyv(ngrams, newnames)
   return(ngrams)
+}
+
+predict <- function(inString, lookup) {
+  kevTokenizer <- function(x) NGramTokenizer(x, Weka_control(min=ncol(lookup)-2, max=ncol(lookup)-2))
+  incorp <- Corpus(VectorSource(inString))
+  incorp <- tm_map(incorp, content_transformer(tolower))
+  incorp <- tm_map(incorp, removePunctuation)
+  incorp <- tm_map(incorp, removeNumbers)
+  ngrams <- kevTokenizer(incorp$content[[1]])
+  lastngram <- unlist(strsplit(ngrams[length(ngrams)], " "))
+  print(lastngram)
+  prediction <- lookup[as.list(lastngram)]$o1
+  return(prediction)
 }
 
 sourceDir <- "final/en_US"
 #sourceDir <- "test"
 
-d1 <- date()
-lookup <- buildDB(sourceDir, sampleRate = 0.5, threshold = 10)
-d2 <- date()
+fourGrams <- buildDB(sourceDir, sampleRate = 0.66, threshold = 10)
+fourGrams <- fourGrams %>% group_by(p1,p2,p3) %>% top_n(5, n)
 
-lookup <- lookup %>% group_by(p1,p2,p3) %>% top_n(1, n)
+triGrams <- buildDB(sourceDir, sampleRate = 0.5, threshold = 10, ngramsize = 3)
+triGrams <- triGrams %>% group_by(p1, p2) %>% top_n(5, n)
+
+biGrams <- buildDB(sourceDir, sampleRate = 0.33, threshold = 10, ngramsize = 2)
+biGrams <- biGrams %>% group_by(p1) %>% top_n(5, n)
