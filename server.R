@@ -12,6 +12,7 @@ load("triGrams.Rda")
 load("biGrams.Rda")
 
 herokuPurple <- "#3C378B"
+herokuLight <- "#D3CBED"
 
 cleanText <- function(inString) {
   incorp <- Corpus(VectorSource(inString))
@@ -78,7 +79,7 @@ shinyServer(function(input, output) {
       results <- biGrams[list(lastword)]
       if(!is.na(results$o1[1])) {
         results$o1 <- factor(results$o1, levels = arrange(results, n)$o1)
-        biplot <- ggplot(results, aes(x=o1, y=n)) + geom_bar(stat="identity", fill=herokuPurple) +
+        biplot <- ggplot(results, aes(x=o1, y=n)) + geom_bar(stat="identity", fill=herokuLight, color=herokuPurple) +
           theme_bw() + coord_flip() +
           labs(title="Frequent words based on last word in the input text", x="Prediction", y="Count")
         return(biplot)  
@@ -93,7 +94,7 @@ shinyServer(function(input, output) {
       results <- triGrams[list(words[1], words[2])]
       if(!is.na(results$o1[1])) {
         results$o1 <- factor(results$o1, levels = arrange(results, n)$o1)
-        triplot <- ggplot(results, aes(x=o1, y=n)) + geom_bar(stat="identity", fill=herokuPurple) +
+        triplot <- ggplot(results, aes(x=o1, y=n)) + geom_bar(stat="identity", fill=herokuLight, color=herokuPurple) +
           theme_bw() + coord_flip() +
           labs(title="Frequent words based on last two words in the input text", x="Prediction", y="Count")
         return(triplot)
@@ -110,7 +111,7 @@ shinyServer(function(input, output) {
       results <- triGrams[list(words[1], words[2], words[3])]
       if(!is.na(results$o1[1])) {
         results$o1 <- factor(results$o1, levels = arrange(results, n)$o1)
-        triplot <- ggplot(results, aes(x=o1, y=n)) + geom_bar(stat="identity", fill=herokuPurple) +
+        triplot <- ggplot(results, aes(x=o1, y=n)) + geom_bar(stat="identity", fill=herokuLight, color=herokuPurple) +
           theme_bw() + coord_flip() +
           labs(title="Frequent words based on last three words in the input text", x="Prediction", y="Count")
         return(triplot)
