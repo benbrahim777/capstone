@@ -90,8 +90,9 @@ shinyServer(function(input, output) {
     clean <- cleanText(input$inputText)
     words <- unlist(strsplit(clean, " "))
     if(length(words) >=2) {
-      lastwords <- tolower(words[length(words)-1:length(words)])
-      results <- triGrams[list(words[1], words[2])]
+      lastwords <- tolower(words[(length(words)-1):length(words)])
+      print(lastwords)
+      results <- triGrams[list(lastwords[1], lastwords[2])]
       if(!is.na(results$o1[1])) {
         results$o1 <- factor(results$o1, levels = arrange(results, n)$o1)
         triplot <- ggplot(results, aes(x=o1, y=n)) + geom_bar(stat="identity", fill=herokuLight, color=herokuPurple) +
@@ -107,8 +108,8 @@ shinyServer(function(input, output) {
     clean <- cleanText(input$inputText)
     words <- unlist(strsplit(clean, " "))
     if(length(words) >=3) {
-      lastwords <- tolower(words[length(words)-2:length(words)])
-      results <- triGrams[list(words[1], words[2], words[3])]
+      lastwords <- tolower(words[(length(words)-2):length(words)])
+      results <- fourGrams[list(words[1], words[2], words[3])]
       if(!is.na(results$o1[1])) {
         results$o1 <- factor(results$o1, levels = arrange(results, n)$o1)
         triplot <- ggplot(results, aes(x=o1, y=n)) + geom_bar(stat="identity", fill=herokuLight, color=herokuPurple) +
