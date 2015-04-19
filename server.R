@@ -109,7 +109,7 @@ shinyServer(function(input, output) {
     words <- unlist(strsplit(clean, " "))
     if(length(words) >=3) {
       lastwords <- tolower(words[(length(words)-2):length(words)])
-      results <- fourGrams[list(words[1], words[2], words[3])]
+      results <- fourGrams[list(lastwords[1], lastwords[2], lastwords[3])]
       if(!is.na(results$o1[1])) {
         results$o1 <- factor(results$o1, levels = arrange(results, n)$o1)
         triplot <- ggplot(results, aes(x=o1, y=n)) + geom_bar(stat="identity", fill=herokuLight, color=herokuPurple) +
